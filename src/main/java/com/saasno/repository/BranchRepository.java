@@ -67,6 +67,12 @@ public class BranchRepository extends JpaRepository<BranchEntity, String> {
 		return new java.util.HashSet<>(ids);
 	}
 
+	// Mengunci perubahan induk cabang sampai transaksi selesai (advisory lock, dilepas otomatis saat commit/rollback).
+	// Tanpa ini dua pemindahan berbarengan (A ke bawah B dan B ke bawah A) sama-sama lolos cek siklus.
+	public void lockHierarchy() {
+		entityManager.createNativeQuery("SELECT 1 FROM (SELECT pg_advisory_xact_lock(hashtext('branch.hierarchy'))) AS locked").getSingleResult();
+	}
+
 	public List<BranchEntity> findAllByName() {
 		return entityManager.createQuery("SELECT b FROM BranchEntity b ORDER BY b.name, b.serial", BranchEntity.class)
 				.getResultList();

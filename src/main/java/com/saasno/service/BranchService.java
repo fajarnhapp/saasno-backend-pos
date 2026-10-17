@@ -139,6 +139,10 @@ public class BranchService {
 
 	@Transactional
 	public ResponseModel<BranchDTO> update(BranchDTO request) {
+		// Dikunci sebelum membaca apa pun, supaya cek siklus melihat hasil pemindahan lain yang baru selesai.
+		if (request.getParentId() != null) {
+			branchRepository.lockHierarchy();
+		}
 		BranchScope scope = branchScopeService.current();
 		BranchEntity branch = request.getId() == null ? null : branchRepository.find(request.getId());
 		if (branch == null || !scope.contains(branch.getId())) {
