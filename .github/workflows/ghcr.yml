@@ -1,0 +1,218 @@
+name: Build, push to GHCR and deploy to VPS
+
+# main -> production (image tag: latest), UAT -> UAT (image tag: uat).
+# Push ke branch hanya build (cek Dockerfile). Push image ke GHCR dan deploy adalah dua aksi manual terpisah (Run workflow).
+# Branch lain tidak di-build, tidak di-push, dan tidak di-deploy.
+on:
+  push:
+    branches: [main, UAT]
+  workflow_dispatch:
+    inputs:
+      push:
+        description: Push image ke GHCR
+        type: boolean
+        default: true
+      deploy:
+        description: Deploy ke VPS memakai image yang sudah ada di GHCR (tag latest untuk main, uat untuk UAT)
+        type: boolean
+        default: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ghcr.io/fajarnhapp/saasno-backend-pos
+
+jobs:
+  build:
+    # Memastikan Dockerfile berhasil di-build; image belum di-push
+    if: github.ref_name == 'main' || github.ref_name == 'UAT'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  push:
+    # Hanya jalan jika dipicu manual dan opsi push dicentang.
+    # Memakai cache dari job build, jadi tidak build ulang dari nol
+    if: github.event_name == 'workflow_dispatch' && inputs.push && (github.ref_name == 'main' || github.ref_name == 'UAT')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref_name == 'main' }}
+            type=raw,value=uat,enable=${{ github.ref_name == 'UAT' }}
+            type=sha,format=short
+
+      - name: Push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+
+  deploy-prod:
+    # Hanya jalan jika dipicu manual, opsi deploy dicentang, dan branch-nya main
+    # Jalan walau push dilewati (deploy memakai image yang sudah ada), tapi tidak jika build atau push gagal
+    if: ${{ !cancelled() && needs.build.result == 'success' && (needs.push.result == 'success' || needs.push.result == 'skipped') && github.event_name == 'workflow_dispatch' && inputs.deploy && github.ref_name == 'main' }}
+    needs: [build, push]
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Prepare SSH
+        env:
+          SSH_KEY: ${{ secrets.SAASNO_VPS_PROD_SSH_KEY }}
+          SSH_KEY_PASSPHRASE: ${{ secrets.SAASNO_VPS_PROD_SSH_KEY_PASSPHRASE }}
+          SSH_PASSWORD: ${{ secrets.SAASNO_VPS_PROD_PASSWORD }}
+          VPS_HOST: ${{ secrets.SAASNO_VPS_PROD_HOST }}
+          VPS_PORT: ${{ secrets.SAASNO_VPS_PROD_PORT || '22' }}
+        run: |
+          install -m 700 -d ~/.ssh
+          ssh-keyscan -p "$VPS_PORT" -H "$VPS_HOST" >> ~/.ssh/known_hosts
+
+          # Autentikasi: key (.pem/.ppk) jika diisi, kalau tidak ada pakai password
+          if [ -n "$SSH_KEY" ]; then
+            if printf '%s' "$SSH_KEY" | head -n1 | grep -q '^PuTTY-User-Key-File'; then
+              # Key berformat PuTTY (.ppk): konversi ke OpenSSH
+              sudo apt-get update -qq && sudo apt-get install -y -qq putty-tools
+              printf '%s\n' "$SSH_KEY" > "$RUNNER_TEMP/key.ppk"
+              if [ -n "$SSH_KEY_PASSPHRASE" ]; then
+                printf '%s' "$SSH_KEY_PASSPHRASE" > "$RUNNER_TEMP/key.pass"
+                puttygen "$RUNNER_TEMP/key.ppk" --old-passphrase "$RUNNER_TEMP/key.pass" -O private-openssh -o ~/.ssh/id_deploy
+              else
+                puttygen "$RUNNER_TEMP/key.ppk" -O private-openssh -o ~/.ssh/id_deploy
+              fi
+              rm -f "$RUNNER_TEMP/key.ppk" "$RUNNER_TEMP/key.pass"
+            else
+              printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
+            fi
+            chmod 600 ~/.ssh/id_deploy
+            echo "SSH_AUTH=key" >> "$GITHUB_ENV"
+          elif [ -n "$SSH_PASSWORD" ]; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+            echo "SSH_AUTH=password" >> "$GITHUB_ENV"
+          else
+            echo "::error::Isi secret SAASNO_VPS_PROD_SSH_KEY atau SAASNO_VPS_PROD_PASSWORD"
+            exit 1
+          fi
+
+      - name: Deploy on VPS PROD
+        env:
+          VPS_HOST: ${{ secrets.SAASNO_VPS_PROD_HOST }}
+          VPS_USER: ${{ secrets.SAASNO_VPS_PROD_USER }}
+          VPS_PORT: ${{ secrets.SAASNO_VPS_PROD_PORT || '22' }}
+          SSHPASS: ${{ secrets.SAASNO_VPS_PROD_PASSWORD }}
+          APP_DIR: ${{ vars.SAASNO_VPS_PROD_APP_DIR || '/home/application/data/apps/fajarnhapp/saasno-backend-pos' }}
+          IMAGE_TAG: latest
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "$SSH_AUTH" = "key" ]; then
+            SSH="ssh -i $HOME/.ssh/id_deploy -o IdentitiesOnly=yes"
+          else
+            SSH="sshpass -e ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no"
+          fi
+          # Token dikirim lewat stdin supaya tidak muncul di daftar proses/log
+          printf '%s' "$GHCR_TOKEN" | $SSH -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" \
+            "docker login ghcr.io -u '$GHCR_USER' --password-stdin && cd '$APP_DIR' && export IMAGE_TAG='$IMAGE_TAG' && docker compose pull && docker compose up -d --no-build && docker image prune -f"
+
+  deploy-uat:
+    # Hanya jalan jika dipicu manual, opsi deploy dicentang, dan branch-nya UAT
+    # Jalan walau push dilewati (deploy memakai image yang sudah ada), tapi tidak jika build atau push gagal
+    if: ${{ !cancelled() && needs.build.result == 'success' && (needs.push.result == 'success' || needs.push.result == 'skipped') && github.event_name == 'workflow_dispatch' && inputs.deploy && github.ref_name == 'UAT' }}
+    needs: [build, push]
+    runs-on: ubuntu-latest
+    environment: uat
+    steps:
+      - name: Prepare SSH
+        env:
+          SSH_KEY: ${{ secrets.SAASNO_VPS_UAT_SSH_KEY }}
+          SSH_KEY_PASSPHRASE: ${{ secrets.SAASNO_VPS_UAT_SSH_KEY_PASSPHRASE }}
+          SSH_PASSWORD: ${{ secrets.SAASNO_VPS_UAT_PASSWORD }}
+          VPS_HOST: ${{ secrets.SAASNO_VPS_UAT_HOST }}
+          VPS_PORT: ${{ secrets.SAASNO_VPS_UAT_PORT || '22' }}
+        run: |
+          install -m 700 -d ~/.ssh
+          ssh-keyscan -p "$VPS_PORT" -H "$VPS_HOST" >> ~/.ssh/known_hosts
+
+          # Autentikasi: key (.pem/.ppk) jika diisi, kalau tidak ada pakai password
+          if [ -n "$SSH_KEY" ]; then
+            if printf '%s' "$SSH_KEY" | head -n1 | grep -q '^PuTTY-User-Key-File'; then
+              # Key berformat PuTTY (.ppk): konversi ke OpenSSH
+              sudo apt-get update -qq && sudo apt-get install -y -qq putty-tools
+              printf '%s\n' "$SSH_KEY" > "$RUNNER_TEMP/key.ppk"
+              if [ -n "$SSH_KEY_PASSPHRASE" ]; then
+                printf '%s' "$SSH_KEY_PASSPHRASE" > "$RUNNER_TEMP/key.pass"
+                puttygen "$RUNNER_TEMP/key.ppk" --old-passphrase "$RUNNER_TEMP/key.pass" -O private-openssh -o ~/.ssh/id_deploy
+              else
+                puttygen "$RUNNER_TEMP/key.ppk" -O private-openssh -o ~/.ssh/id_deploy
+              fi
+              rm -f "$RUNNER_TEMP/key.ppk" "$RUNNER_TEMP/key.pass"
+            else
+              printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
+            fi
+            chmod 600 ~/.ssh/id_deploy
+            echo "SSH_AUTH=key" >> "$GITHUB_ENV"
+          elif [ -n "$SSH_PASSWORD" ]; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+            echo "SSH_AUTH=password" >> "$GITHUB_ENV"
+          else
+            echo "::error::Isi secret SAASNO_VPS_UAT_SSH_KEY atau SAASNO_VPS_UAT_PASSWORD"
+            exit 1
+          fi
+
+      - name: Deploy on VPS UAT
+        env:
+          VPS_HOST: ${{ secrets.SAASNO_VPS_UAT_HOST }}
+          VPS_USER: ${{ secrets.SAASNO_VPS_UAT_USER }}
+          VPS_PORT: ${{ secrets.SAASNO_VPS_UAT_PORT || '22' }}
+          SSHPASS: ${{ secrets.SAASNO_VPS_UAT_PASSWORD }}
+          APP_DIR: ${{ vars.SAASNO_VPS_UAT_APP_DIR || '/home/application/data/apps/fajarnhapp/saasno-backend-pos' }}
+          IMAGE_TAG: uat
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "$SSH_AUTH" = "key" ]; then
+            SSH="ssh -i $HOME/.ssh/id_deploy -o IdentitiesOnly=yes"
+          else
+            SSH="sshpass -e ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no"
+          fi
+          # Token dikirim lewat stdin supaya tidak muncul di daftar proses/log
+          printf '%s' "$GHCR_TOKEN" | $SSH -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" \
+            "docker login ghcr.io -u '$GHCR_USER' --password-stdin && cd '$APP_DIR' && export IMAGE_TAG='$IMAGE_TAG' && docker compose pull && docker compose up -d --no-build && docker image prune -f"

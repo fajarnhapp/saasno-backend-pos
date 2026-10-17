@@ -1,0 +1,11 @@
+Key,Nilai,Diubah
+PRODUCT_UNIT,"[{""value"":""PCS"",""label"":""Pcs""},{""value"":""UNIT"",""label"":""Unit""},{""value"":""SET"",""label"":""Set""},{""value"":""PACK"",""label"":""Pak""},{""value"":""BOX"",""label"":""Dus""},{""value"":""CARTON"",""label"":""Karton""},{""value"":""DOZEN"",""label"":""Lusin""},{""value"":""BOTTLE"",""label"":""Botol""},{""value"":""SACHET"",""label"":""Sachet""},{""value"":""SHEET"",""label"":""Lembar""},{""value"":""PORTION"",""label"":""Porsi""},{""value"":""GRAM"",""label"":""Gram""},{""value"":""KG"",""label"":""Kilogram""},{""value"":""ML"",""label"":""Mililiter""},{""value"":""LITER"",""label"":""Liter""},{""value"":""CM"",""label"":""Sentimeter""},{""value"":""METER"",""label"":""Meter""}]",2026-10-07 06:52
+MANUAL_DISCOUNT_MAX_PERCENT,10,2026-10-07 10:59
+SALE_CHARGE,"[{""value"":""PPN10"",""label"":""Pajak restoran"",""type"":""PERCENT"",""amount"":11,""inclusive"":false}]",2026-10-08 13:42
+EXPENSE_CATEGORY,"[{""value"":""SUPPLIES"",""label"":""Perlengkapan""},{""value"":""CLEANING"",""label"":""Kebersihan""},{""value"":""UTILITY"",""label"":""Listrik/Air""},{""value"":""TRANSPORT"",""label"":""Transportasi""},{""value"":""REPAIR"",""label"":""Perbaikan""},{""value"":""OTHER"",""label"":""Lainnya""}]",2026-10-07 11:55
+ADMIN_WHATSAPP,6281383161853,2026-10-07 21:54
+FRONTEND_URL,http://localhost:3000,2026-10-07 22:18
+HOLD_STALE_HOURS,12,2026-10-07 22:36
+EXPENSE_WARNING_AMOUNT,500000,2026-10-07 23:52
+NOTIFICATION_RETENTION_DAYS,30,2026-10-08 00:45
+LOW_STOCK_THRESHOLD,5,2026-10-08 00:46

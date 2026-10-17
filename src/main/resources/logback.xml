@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <property name="LOG_PATH" value="/home/application/data/logs/com/saasno"/>
+    
+    <appender name="saasno-backend-system" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_PATH}/saasno-backend-system.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_PATH}/saasno-backend-system.%d{yyyy-MM-dd}.log</fileNamePattern>
+            <maxHistory>30</maxHistory>
+        </rollingPolicy>
+        <encoder>
+            <pattern>%d{yyyy-MMM-dd HH:mm:ss.SSS}|[%t]|%c{1}|%X|%-5p|%m%n</pattern>
+        </encoder>
+    </appender>
+    
+    <root level="INFO">
+        <appender-ref ref="saasno-backend-system"/>
+    </root>
+
+</configuration>

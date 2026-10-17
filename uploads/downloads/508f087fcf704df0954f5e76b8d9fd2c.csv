@@ -1,0 +1,9 @@
+Nomor Pesanan,Tanggal,Cabang,Status,Nama Pembeli,Nomor HP,Pengambilan,Pembayaran,Alamat,Catatan Pembeli,Barang,Perkiraan Total,Total Pasti,Nomor Penjualan,Diputuskan Oleh,Catatan Keputusan
+ONL-261009-0005,2026-10-09 21:51,Toko Sumber Rejeki Bandung,Menunggu,"'=HYPERLINK(""http://x"",""a"")",6281391557491,Ambil di toko,Tunai,,'+cmd|' /C calc'!A0,Gula Pasir Gulaku 1 kg x 1 Pak,17500,,,,
+ONL-261009-0004,2026-10-09 21:51,Toko Sumber Rejeki Bandung,Menunggu,"'=HYPERLINK(""http://x"",""a"")",6281391557462,Ambil di toko,Tunai,,'+cmd|' /C calc'!A0,Gula Pasir Gulaku 1 kg x 1 Pak,17500,,,,
+ONL-261009-0003,2026-10-09 21:50,Toko Sumber Rejeki Bandung,Menunggu,"'=HYPERLINK(""http://x"",""a"")",6281399887766,Ambil di toko,Tunai,,'+cmd|' /C calc'!A0,Gula Pasir Gulaku 1 kg x 1 Pak,17500,,,,
+ONL-261009-0002,2026-10-09 21:49,Toko Sumber Rejeki Bandung,Menunggu,"'=HYPERLINK(""http://x"",""a"")",6281399887766,Ambil di toko,Tunai,,'+cmd|' /C calc'!A0,Gula Pasir Gulaku 1 kg x 1 Pak,17500,,,,
+ONL-261009-0001,2026-10-09 21:49,Toko Sumber Rejeki Bandung,Menunggu,"'=HYPERLINK(""http://x"",""a"")",6281399887766,Ambil di toko,Tunai,,'+cmd|' /C calc'!A0,Gula Pasir Gulaku 1 kg x 1 Pak,17500,,,,
+ONL-261008-0006,2026-10-08 13:47,Toko Sumber Rejeki Bandung,Selesai,tes,62812345678,Ambil di toko,Tunai,,tes,Biskuit Roma Kelapa x 1 Pak,9000,9990,10202608002/261008/0010,super@email.com,
+ONL-261008-0005,2026-10-08 13:38,Toko Sumber Rejeki Bandung,Selesai,Tono Wijaya,6281300112233,Ambil di toko,Tunai,,,Gula Pasir Gulaku 1 kg x 2 Pak,35000,40850,10202608002/261008/0009,manajer.bandung@sumberrejeki.id,
+ONL-261008-0001,2026-10-08 13:16,Toko Sumber Rejeki Bandung,Selesai,Rina Marlina,6281355667788,Ambil di toko,Tunai,,Diambil sore ya,Gula Pasir Gulaku 1 kg x 2 Pak; Kopi Kapal Api Special 165 g x 3 Pak,81500,81500,10202608002/261008/0006,manajer.bandung@sumberrejeki.id,Stok tersedia

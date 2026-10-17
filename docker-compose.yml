@@ -1,0 +1,40 @@
+services:
+  annisadua-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ghcr.io/fajarnhapp/saasno-backend-pos:${IMAGE_TAG:-latest}
+    container_name: annisadua-backend
+    restart: always
+    volumes:
+      # Volume log dipertahankan agar log tidak hilang saat container restart
+      - /home/application/data/logs/com/annisadua:/home/application/data/logs/com/annisadua
+    expose:
+      - "80"
+    networks:
+      - annisadua-backend
+    environment:
+      SAASNO_DATABASE_URL: ${SAASNO_DATABASE_URL}
+      SAASNO_DATABASE_USERNAME: ${SAASNO_DATABASE_USERNAME}
+      SAASNO_DATABASE_PASSWORD: ${SAASNO_DATABASE_PASSWORD}
+      SAASNO_RABBITMQ_HOST: ${SAASNO_RABBITMQ_HOST}
+      SAASNO_RABBITMQ_USERNAME: ${SAASNO_RABBITMQ_USERNAME}
+      SAASNO_RABBITMQ_PASSWORD: ${SAASNO_RABBITMQ_PASSWORD}
+      SAASNO_REDIS_HOST: ${SAASNO_REDIS_HOST}
+      SAASNO_REDIS_PASSWORD: ${SAASNO_REDIS_PASSWORD}
+      SAASNO_MONGODB_URI: ${SAASNO_MONGODB_URI}
+      SPRING_LOGGING_PATH: /home/application/data/logs/com/annisadua-backend
+      JAVA_OPTS: >
+        -XX:+UseContainerSupport
+        -XX:MaxRAMPercentage=70.0
+        -XX:InitialRAMPercentage=25.0
+        -XX:MinRAMPercentage=25.0
+        -XX:+UseG1GC
+        -XX:MaxGCPauseMillis=100
+    mem_limit: 4096m
+    cpus: 2
+
+networks:
+  annisadua-backend:
+    name: annisadua-backend
+    external: true
