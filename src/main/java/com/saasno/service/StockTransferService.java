@@ -47,6 +47,9 @@ import jakarta.servlet.http.HttpServletRequest;
 @Service
 public class StockTransferService {
 
+	@Autowired
+	private BatchService batchService;
+
 	private static final String REFERENCE = "STOCK_TRANSFER";
 	private static final int MAX_ITEMS = 100;
 	private static final int MAX_NOTE = 500;
@@ -290,6 +293,10 @@ public class StockTransferService {
 					StockMovementEntity.TRANSFER_OUT));
 			operations.add(new Operation(transfer.getDestinationBranchId(), product, item.getQuantity(),
 					StockMovementEntity.TRANSFER_IN));
+		}
+		// Produk berkedaluwarsa: batch dipindah apa adanya (FEFO, tanpa yang sudah kedaluwarsa) sebelum saldo diubah.
+		for (StockTransferItemEntity item : items) {
+			batchService.transfer(transfer.getSourceBranchId(), transfer.getDestinationBranchId(), products.get(item.getProductId()), item.getQuantity());
 		}
 		operations.sort(Comparator.comparing(Operation::branchId).thenComparing(o -> o.product().getId()));
 		String userId = sessionUtility.getUserId();

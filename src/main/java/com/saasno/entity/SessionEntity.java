@@ -16,6 +16,9 @@ public class SessionEntity {
 	private Date registered;
 	private Date expired;
 	private boolean twoFactorPending;
+	// Asal perangkat saat login (untuk daftar perangkat); kosong pada sesi lama.
+	private String ip;
+	private String userAgent;
 
 	public SessionEntity() {
 
@@ -117,5 +120,21 @@ public class SessionEntity {
 
 	public void setTwoFactorPending(boolean twoFactorPending) {
 		this.twoFactorPending = twoFactorPending;
+	}
+
+	public String getIp() {
+		return ip;
+	}
+
+	public void setIp(String ip) {
+		this.ip = ip;
+	}
+
+	public String getUserAgent() {
+		return userAgent;
+	}
+
+	public void setUserAgent(String userAgent) {
+		this.userAgent = userAgent;
 	}
 }

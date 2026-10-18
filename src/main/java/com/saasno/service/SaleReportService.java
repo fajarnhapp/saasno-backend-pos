@@ -62,7 +62,7 @@ public class SaleReportService {
 
 		// Penjualan selesai (termasuk yang kemudian di-void): pada hari selesai.
 		for (Object[] r : query("SELECT x.branch_id, CAST(COALESCE(x.decided_at, x.registered) AS date), COUNT(*), "
-				+ "SUM(x.total), SUM(x.promo_discount), SUM(x.manual_discount), SUM(x.charge_total) FROM public.sale x "
+				+ "SUM(x.total), SUM(x.promo_discount), SUM(x.manual_discount), SUM(x.charge_total), SUM(x.credit_amount) FROM public.sale x "
 				+ "WHERE x.status IN ('COMPLETED','VOIDED') AND COALESCE(x.decided_at, x.registered) >= :from "
 				+ "AND COALESCE(x.decided_at, x.registered) < :to" + branchFilter + " GROUP BY 1, 2", start, end, wanted, scope)) {
 			SaleCashDTO dto = row(rows, r);
@@ -71,9 +71,10 @@ public class SaleReportService {
 			dto.setPromoDiscount((BigDecimal) r[4]);
 			dto.setManualDiscount((BigDecimal) r[5]);
 			dto.setChargeTotal((BigDecimal) r[6]);
+			dto.setCreditTotal((BigDecimal) r[7]);
 		}
 		// Void: uang keluar pada hari void.
-		for (Object[] r : query("SELECT x.branch_id, CAST(x.voided_at AS date), COUNT(*), SUM(x.total) FROM public.sale x "
+		for (Object[] r : query("SELECT x.branch_id, CAST(x.voided_at AS date), COUNT(*), SUM(x.total - x.credit_amount) FROM public.sale x "
 				+ "WHERE x.status = 'VOIDED' AND x.voided_at >= :from AND x.voided_at < :to" + branchFilter
 				+ " GROUP BY 1, 2", start, end, wanted, scope)) {
 			SaleCashDTO dto = row(rows, r);
@@ -81,7 +82,7 @@ public class SaleReportService {
 			dto.setVoidTotal((BigDecimal) r[3]);
 		}
 		// Retur: uang keluar pada hari retur.
-		for (Object[] r : query("SELECT x.branch_id, CAST(x.registered AS date), COUNT(*), SUM(x.refund_total) "
+		for (Object[] r : query("SELECT x.branch_id, CAST(x.registered AS date), COUNT(*), SUM(x.refund_total - x.credit_offset) "
 				+ "FROM public.sale_return x WHERE x.registered >= :from AND x.registered < :to" + branchFilter
 				+ " GROUP BY 1, 2", start, end, wanted, scope)) {
 			SaleCashDTO dto = row(rows, r);
@@ -89,11 +90,17 @@ public class SaleReportService {
 			dto.setReturnTotal((BigDecimal) r[3]);
 		}
 
+		// Pembayaran piutang: uang masuk pada hari diterima.
+		for (Object[] r : query("SELECT x.branch_id, CAST(x.registered AS date), SUM(x.amount) FROM public.receivable_payment x "
+				+ "WHERE x.registered >= :from AND x.registered < :to" + branchFilter + " GROUP BY 1, 2", start, end, wanted, scope)) {
+			row(rows, r).setCollectionTotal((BigDecimal) r[2]);
+		}
+
 		List<SaleCashDTO> result = new ArrayList<>(rows.values());
 		Map<String, String> names = branchScopeService.names(result.stream().map(SaleCashDTO::getBranchId).toList());
 		result.forEach(d -> {
 			d.setBranchName(names.get(d.getBranchId()));
-			d.setNet(d.getSalesTotal().subtract(d.getVoidTotal()).subtract(d.getReturnTotal()));
+			d.setNet(d.getSalesTotal().subtract(d.getCreditTotal()).add(d.getCollectionTotal()).subtract(d.getVoidTotal()).subtract(d.getReturnTotal()));
 		});
 		result.sort(Comparator.comparing(SaleCashDTO::getDate).reversed().thenComparing(SaleCashDTO::getBranchName));
 		return new ResponseModel<List<SaleCashDTO>>().success(result);
@@ -129,6 +136,8 @@ public class SaleReportService {
 			dto.setPromoDiscount(BigDecimal.ZERO);
 			dto.setManualDiscount(BigDecimal.ZERO);
 			dto.setChargeTotal(BigDecimal.ZERO);
+			dto.setCreditTotal(BigDecimal.ZERO);
+			dto.setCollectionTotal(BigDecimal.ZERO);
 			return dto;
 		});
 	}

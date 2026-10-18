@@ -69,6 +69,36 @@ public class SessionService {
 		}
 	}
 
+	// Semua sesi aktif (kunci session:*). Jumlahnya kecil; dipakai daftar perangkat dan pengeluaran paksa.
+	public java.util.List<SessionEntity> readAll() {
+		java.util.List<SessionEntity> list = new java.util.ArrayList<>();
+		Set<String> keys = redisTemplate.keys(PREFIX + "*");
+		if (keys == null) {
+			return list;
+		}
+		for (String key : keys) {
+			Object value = redisTemplate.opsForValue().get(key);
+			if (value instanceof SessionEntity session && session.getId() != null && key.equals(PREFIX + session.getId())) {
+				list.add(session);
+			}
+		}
+		return list;
+	}
+
+	// Pegangan publik sebuah sesi: id sesi adalah token, jadi tidak pernah dikirim ke klien; yang dikirim hanya hash-nya.
+	public static String handle(SessionEntity session) {
+		try {
+			byte[] digest = java.security.MessageDigest.getInstance("SHA-256").digest(session.getId().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+			StringBuilder out = new StringBuilder();
+			for (int i = 0; i < 12; i++) {
+				out.append(String.format("%02x", digest[i]));
+			}
+			return out.toString();
+		} catch (java.security.NoSuchAlgorithmException e) {
+			throw new IllegalStateException(e);
+		}
+	}
+
 	public ResponseModel<SessionEntity> check(HttpServletRequest request, String path, String method)
 			throws IOException {
 		ResponseModel<SessionEntity> session = check(request);

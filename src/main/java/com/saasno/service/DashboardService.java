@@ -18,6 +18,7 @@ import com.saasno.repository.ConfigurationRepository;
 import com.saasno.utility.BranchScope;
 import com.saasno.utility.SessionUtility;
 import com.saasno.utility.constant.ConfigurationKey;
+import com.saasno.utility.dto.batch.BatchDTO;
 import com.saasno.utility.dto.dashboard.DashboardDTO;
 import com.saasno.utility.dto.dashboard.DashboardDTO.DayCount;
 import com.saasno.utility.dto.dashboard.DashboardDTO.General;
@@ -53,6 +54,12 @@ public class DashboardService {
 	private ArticleService articleService;
 
 	@Autowired
+	private BatchService batchService;
+
+	@Autowired
+	private ReceivableService receivableService;
+
+	@Autowired
 	private SessionUtility sessionUtility;
 
 	@Autowired
@@ -65,13 +72,13 @@ public class DashboardService {
 		LocalDate today = LocalDate.now();
 
 		General general = general(scope, today, allowed.contains("PUT_API_STOCK_TRANSFER_APPROVE"), allowed.contains("PUT_API_ORDER_APPROVE"),
-				allowed.contains("PUT_API_SALE_APPROVE"));
+				allowed.contains("PUT_API_SALE_APPROVE"), allowed.contains("GET_API_BATCH"), allowed.contains("GET_API_RECEIVABLE"));
 		return new com.saasno.utility.model.ResponseModel<DashboardDTO>().success(new DashboardDTO(general));
 	}
 
 	// ---------------------------------------------------------------- umum
 
-	private General general(BranchScope scope, LocalDate today, boolean canApproveTransfer, boolean canApproveOrder, boolean canApproveSale) {
+	private General general(BranchScope scope, LocalDate today, boolean canApproveTransfer, boolean canApproveOrder, boolean canApproveSale, boolean canSeeBatch, boolean canSeeReceivable) {
 		LocalDateTime dayStart = today.atStartOfDay();
 		LocalDateTime tomorrow = today.plusDays(1).atStartOfDay();
 		LocalDateTime trendStart = today.minusDays(TREND_DAYS - 1L).atStartOfDay();
@@ -140,8 +147,10 @@ public class DashboardService {
 		Long waitingApproval = canApproveSale ? count(
 				"SELECT COUNT(*) FROM public.sale s WHERE s.status = 'WAITING_APPROVAL' AND s.branch_id " + in(scope), scope) : null;
 
+		BatchDTO.Summary batch = canSeeBatch ? batchService.summary(scope, null) : null;
 		return new General(todayCount, yesterdayCount, todayQuantity, myTodayCount, hourly, daily, top, stock(scope), held,
-				oldHeld, pendingTransfers, waitingApproval, pendingOrders, articleService.latest(scope, ARTICLES));
+				oldHeld, pendingTransfers, waitingApproval, pendingOrders, articleService.latest(scope, ARTICLES),
+				batch == null ? null : batch.expiredBatches(), batch == null ? null : batch.soonBatches(), canSeeReceivable ? receivableService.overdueCount(scope) : null);
 	}
 
 	private StockStatus stock(BranchScope scope) {

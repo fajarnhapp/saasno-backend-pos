@@ -53,6 +53,14 @@ public class Path {
 	public static final String API_PETTY_CASH = API + "/petty-cash";
 
 	public static final String API_FINANCE = API + "/finance";
+	public static final String API_ANALYTICS = API + "/analytics";
+	public static final String API_SHIFT = API + "/shift";
+	public static final String API_SESSION = API + "/session";
+	public static final String API_BATCH = API + "/batch";
+	public static final String API_IMPORT = API + "/import";
+	public static final String API_BACKUP = API + "/backup";
+	public static final String API_SUPPLIER = API + "/supplier";
+	public static final String API_PURCHASE = API + "/purchase";
 
 	public static final String API_CUSTOMER = API + "/customer";
 

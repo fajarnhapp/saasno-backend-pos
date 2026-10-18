@@ -50,6 +50,15 @@ import jakarta.servlet.http.HttpServletRequest;
 @Service
 public class SaleReturnService {
 
+	@Autowired
+	private ShiftService shiftService;
+
+	@Autowired
+	private LoyaltyService loyaltyService;
+
+	@Autowired
+	private ReceivableService receivableService;
+
 	private static final String REFERENCE = "SALE_RETURN";
 	private static final int MAX_ITEMS = 100;
 	private static final int MAX_REASON = 500;
@@ -126,16 +135,20 @@ public class SaleReturnService {
 		String reason = request.getReason().trim();
 
 		String userId = sessionUtility.getUserId();
+		shiftService.assertOpen(userId, sale.getBranchId());
 		BranchEntity branch = branchRepository.find(sale.getBranchId());
 		SaleReturnEntity entity = new SaleReturnEntity();
 		entity.setSaleId(sale.getId());
 		entity.setBranchId(sale.getBranchId());
 		entity.setReason(reason);
 		entity.setRefundTotal(calc.refundTotal());
+		// Transaksi tempo: refund mengurangi piutang yang masih terbuka lebih dulu; sisanya baru dikembalikan sebagai uang.
+		entity.setCreditOffset(receivableService.applyReturn(sale, calc.refundTotal()));
 		entity.setPromoAdjustment(calc.promoAdjustment());
 		entity.setCreatedBy(userId);
 		returnRepository.store(entity, branch.getSerial());
 		returnRepository.getEntityManager().flush();
+		loyaltyService.onReturned(sale, calc.refundTotal());
 
 		for (Plan plan : calc.plans()) {
 			plan.item().setReturnedQuantity(plan.item().getReturnedQuantity().add(plan.quantity()));
@@ -293,7 +306,7 @@ public class SaleReturnService {
 		}
 
 		// Diskon manual tingkat transaksi ikut mengecil sebanding dengan nilai barang yang tersisa.
-		BigDecimal transactionDiscount = sale.getManualDiscount().subtract(originalItemDiscounts).max(BigDecimal.ZERO);
+		BigDecimal transactionDiscount = sale.getManualDiscount().add(sale.getRewardDiscount()).subtract(originalItemDiscounts).max(BigDecimal.ZERO);
 		BigDecimal remainingTransactionDiscount = originalLines.signum() == 0 ? BigDecimal.ZERO
 				: transactionDiscount.multiply(remainingLines).divide(originalLines, 2, RoundingMode.HALF_UP);
 

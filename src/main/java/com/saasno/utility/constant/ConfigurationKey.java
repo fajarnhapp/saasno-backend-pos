@@ -37,6 +37,45 @@ public enum ConfigurationKey {
 	MAX_LOGIN_ATTEMPTS,
 
 	// Lama (menit) akun terkunci setelah melewati MAX_LOGIN_ATTEMPTS (bilangan bulat >= 1).
-	LOGIN_LOCK_MINUTES;
+	LOGIN_LOCK_MINUTES,
+
+	// "true" = kasir wajib membuka shift sebelum membuat penjualan atau retur.
+	SHIFT_REQUIRED,
+
+	// Shift yang terbuka lebih lama dari ini (jam) harus ditutup dulu sebelum bisa bertransaksi (bilangan bulat >= 1).
+	SHIFT_MAX_HOURS,
+
+	// Selisih uang shift (rupiah) di atas ini wajib diberi catatan saat menutup shift (rupiah utuh >= 0).
+	SHIFT_DIFFERENCE_LIMIT,
+
+	// "true" = toko buka 24 jam; aturan "transaksi di luar jam buka" di Analitik dimatikan.
+	STORE_24_HOURS,
+
+	// Jam buka dan tutup toko (0-24) untuk aturan "transaksi di luar jam buka" di Analitik; bawaan 6 dan 22.
+	STORE_OPEN_HOUR,
+	STORE_CLOSE_HOUR,
+
+	// Cara harga pokok produk diperbarui saat barang pembelian diterima: AVERAGE (rata-rata tertimbang), LAST, atau NONE.
+	PURCHASE_COST_METHOD,
+
+	// Cadangan database: aktifkan harian (true/false), jam jalan (0-23), jumlah berkas yang disimpan, folder tujuan, dan lokasi pg_dump.
+	BACKUP_ENABLED,
+	BACKUP_HOUR,
+	BACKUP_KEEP_COUNT,
+	BACKUP_DIR,
+	BACKUP_PG_DUMP_PATH,
+
+	// Batch yang kedaluwarsa dalam sekian hari dianggap "segera kedaluwarsa" (bilangan bulat >= 1, bawaan 30).
+	EXPIRY_WARNING_DAYS,
+
+	// Program poin: aktifkan (true/false), rupiah belanja per 1 poin, nilai rupiah 1 poin saat dipakai, dan batas persen tagihan yang boleh dibayar dengan poin.
+	LOYALTY_ENABLED,
+	LOYALTY_EARN_PER_RUPIAH,
+	LOYALTY_POINT_VALUE,
+	LOYALTY_MAX_REDEEM_PERCENT,
+
+	// Penjualan tempo: batas total piutang berjalan per customer (rupiah; 0 = dimatikan) dan jatuh tempo bawaan (hari).
+	CREDIT_LIMIT,
+	CREDIT_DEFAULT_DAYS;
 
 }

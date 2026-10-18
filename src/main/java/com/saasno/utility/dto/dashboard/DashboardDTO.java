@@ -28,7 +28,11 @@ public record DashboardDTO(General general) {
 			// null kalau user tidak berhak menyetujui pesanan online.
 			Long pendingOrderCount,
 			// Artikel terbit terbaru (tanpa isi), yang disematkan di atas.
-			List<ArticleDTO> articles) {
+			List<ArticleDTO> articles,
+			// null kalau user tidak berhak melihat batch kedaluwarsa.
+			Long expiredBatchCount, Long soonBatchCount,
+			// null kalau user tidak berhak melihat piutang.
+			Long overdueReceivableCount) {
 	}
 
 	public record HourCount(int hour, long count) {

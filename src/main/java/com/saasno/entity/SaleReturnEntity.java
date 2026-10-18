@@ -39,6 +39,10 @@ public class SaleReturnEntity {
 	@Column(name = "registered", nullable = false, updatable = false)
 	private LocalDateTime registered;
 
+	// Bagian refund yang mengurangi piutang customer (bukan uang tunai keluar).
+	@Column(name = "credit_offset", precision = 19, scale = 2, nullable = false, updatable = false)
+	private BigDecimal creditOffset = BigDecimal.ZERO;
+
 	@Column(name = "promo_adjustment", precision = 19, scale = 2, nullable = false, updatable = false)
 	private BigDecimal promoAdjustment;
 
@@ -124,4 +128,11 @@ public class SaleReturnEntity {
 		this.promoAdjustment = promoAdjustment;
 	}
 
+	public BigDecimal getCreditOffset() {
+		return creditOffset;
+	}
+
+	public void setCreditOffset(BigDecimal creditOffset) {
+		this.creditOffset = creditOffset;
+	}
 }

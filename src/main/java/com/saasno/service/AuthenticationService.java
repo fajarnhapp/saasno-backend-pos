@@ -74,6 +74,9 @@ public class AuthenticationService {
 		}
 
 		SessionEntity session = new SessionEntity(existingUser, expiredSeconds);
+		session.setIp(clientIp(request));
+		String agent = request.getHeader("User-Agent");
+		session.setUserAgent(agent == null ? null : agent.substring(0, Math.min(agent.length(), 255)));
 		if (Boolean.TRUE.equals(existingUser.getTwoFactorAuth())) {
 			session.setTwoFactorPending(true);
 		}
@@ -140,6 +143,13 @@ public class AuthenticationService {
 		}
 
 		return new ResponseModel<SessionEntity>().success();
+	}
+
+	// IP asal: header X-Forwarded-For dari frontend (bila ada), kalau tidak alamat koneksi.
+	private static String clientIp(HttpServletRequest request) {
+		String forwarded = request.getHeader("X-Forwarded-For");
+		String ip = forwarded != null && !forwarded.isBlank() ? forwarded.split(",")[0].trim() : request.getRemoteAddr();
+		return ip == null ? null : ip.substring(0, Math.min(ip.length(), 64));
 	}
 
 	private ApiException failedAttempt(UserEntity user, String message) {

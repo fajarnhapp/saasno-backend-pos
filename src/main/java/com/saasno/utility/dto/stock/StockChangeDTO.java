@@ -14,6 +14,9 @@ public class StockChangeDTO {
 	private BigDecimal quantity;
 	private String unit;
 	private String note;
+	// Hanya untuk stok masuk produk yang dilacak kedaluwarsanya.
+	private java.time.LocalDate expiryDate;
+	private String batchNo;
 
 	public String getBranchId() {
 		return branchId;
@@ -55,4 +58,19 @@ public class StockChangeDTO {
 		this.note = note;
 	}
 
+	public java.time.LocalDate getExpiryDate() {
+		return expiryDate;
+	}
+
+	public void setExpiryDate(java.time.LocalDate expiryDate) {
+		this.expiryDate = expiryDate;
+	}
+
+	public String getBatchNo() {
+		return batchNo;
+	}
+
+	public void setBatchNo(String batchNo) {
+		this.batchNo = batchNo;
+	}
 }

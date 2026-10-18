@@ -49,6 +49,29 @@ public class SaleEntity {
 	@Column(name = "promo_discount", precision = 19, scale = 2, nullable = false, updatable = false)
 	private BigDecimal promoDiscount;
 
+	@Column(name = "reward_discount", precision = 19, scale = 2, nullable = false, updatable = false)
+	private BigDecimal rewardDiscount = BigDecimal.ZERO;
+
+	// Bagian tagihan yang belum dibayar saat transaksi (penjualan tempo); paid = uang muka.
+	@Column(name = "credit_amount", precision = 19, scale = 2, nullable = false, updatable = false)
+	private BigDecimal creditAmount = BigDecimal.ZERO;
+
+	// ONLINE | OFFLINE (dicatat saat kasir offline lalu disinkronkan).
+	@Column(name = "source", length = 8, nullable = false, updatable = false)
+	private String source = "ONLINE";
+
+	@Column(name = "voucher_id", length = 64, updatable = false)
+	private String voucherId;
+
+	@Column(name = "voucher_code", length = 32, updatable = false)
+	private String voucherCode;
+
+	@Column(name = "points_used", nullable = false, updatable = false)
+	private long pointsUsed = 0;
+
+	@Column(name = "points_earned", nullable = false)
+	private long pointsEarned = 0;
+
 	@Column(name = "manual_discount", precision = 19, scale = 2, nullable = false, updatable = false)
 	private BigDecimal manualDiscount;
 
@@ -401,4 +424,59 @@ public class SaleEntity {
 		this.promoValue = promoValue;
 	}
 
+	public BigDecimal getRewardDiscount() {
+		return rewardDiscount;
+	}
+
+	public void setRewardDiscount(BigDecimal rewardDiscount) {
+		this.rewardDiscount = rewardDiscount;
+	}
+
+	public String getVoucherId() {
+		return voucherId;
+	}
+
+	public void setVoucherId(String voucherId) {
+		this.voucherId = voucherId;
+	}
+
+	public String getVoucherCode() {
+		return voucherCode;
+	}
+
+	public void setVoucherCode(String voucherCode) {
+		this.voucherCode = voucherCode;
+	}
+
+	public long getPointsUsed() {
+		return pointsUsed;
+	}
+
+	public void setPointsUsed(long pointsUsed) {
+		this.pointsUsed = pointsUsed;
+	}
+
+	public long getPointsEarned() {
+		return pointsEarned;
+	}
+
+	public void setPointsEarned(long pointsEarned) {
+		this.pointsEarned = pointsEarned;
+	}
+
+	public BigDecimal getCreditAmount() {
+		return creditAmount;
+	}
+
+	public void setCreditAmount(BigDecimal creditAmount) {
+		this.creditAmount = creditAmount;
+	}
+
+	public String getSource() {
+		return source;
+	}
+
+	public void setSource(String source) {
+		this.source = source;
+	}
 }

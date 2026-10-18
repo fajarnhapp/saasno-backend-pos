@@ -1,6 +1,7 @@
 package com.saasno.service;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.math.BigInteger;
 import java.math.RoundingMode;
 import java.util.HashSet;
@@ -40,6 +41,11 @@ import jakarta.servlet.http.HttpServletRequest;
 // untuk produk yang terlihat oleh cabang itu (milik cabang itu, turunannya, atau induknya).
 @Service
 public class StockService {
+
+	private static final ThreadLocal<LocalDateTime> MOVEMENT_TIME = new ThreadLocal<>();
+
+	@Autowired
+	private BatchService batchService;
 
 	private static final BigDecimal MAX_QUANTITY = new BigDecimal("9999999999999.999999");
 	private static final int SCALE = 6;
@@ -155,6 +161,16 @@ public class StockService {
 		return new DataResult<>(dto, result.getTotal(), result.getGrandTotal());
 	}
 
+	// Menjalankan action yang mutasi stoknya dicatat dengan waktu tertentu (transaksi offline memakai waktu di kasir).
+	public void atTime(LocalDateTime time, Runnable action) {
+		MOVEMENT_TIME.set(time);
+		try {
+			action.run();
+		} finally {
+			MOVEMENT_TIME.remove();
+		}
+	}
+
 	// ---------------------------------------------------------------- tulis
 
 	// Stok masuk (stok awal, barang datang): menambah saldo, wajib ada catatan.
@@ -166,8 +182,8 @@ public class StockService {
 		assertActive(product);
 		BigDecimal quantity = toBase(product, request.getQuantity(), request.getUnit(), false);
 
-		applyMovement(request.getBranchId().trim(), product, quantity, StockMovementEntity.RECEIVE, null, null, note,
-				sessionUtility.getUserId());
+		batchService.withBatch(request.getBatchNo(), request.getExpiryDate(), () -> applyMovement(request.getBranchId().trim(), product, quantity,
+				StockMovementEntity.RECEIVE, null, null, note, sessionUtility.getUserId()));
 		return new ResponseModel<StockDTO>().success(balance(request.getBranchId().trim(), product));
 	}
 
@@ -206,6 +222,8 @@ public class StockService {
 	@Transactional
 	public void applyMovement(String branchId, ProductEntity product, BigDecimal delta, String type,
 			String referenceType, String referenceId, String note, String userId, BigDecimal unitCost) {
+		// Produk yang dilacak kedaluwarsanya: ambil/tambah batch lebih dulu, galat apa pun membatalkan seluruh perubahan stok.
+		batchService.onChange(branchId, product, delta, type);
 		BigDecimal after = delta.signum() > 0
 				? stockRepository.increase(branchId, product.getId(), delta)
 				: stockRepository.decrease(branchId, product.getId(), delta.negate());
@@ -223,6 +241,7 @@ public class StockService {
 		movement.setReferenceId(referenceId);
 		movement.setNote(note);
 		movement.setCreatedBy(userId);
+		movement.setRegistered(MOVEMENT_TIME.get());
 		stockRepository.addMovement(movement);
 		if (delta.signum() < 0) {
 			stockAlertService.onDecrease(branchId, product, after.subtract(delta), after, userId);

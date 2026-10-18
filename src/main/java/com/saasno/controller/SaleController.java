@@ -52,6 +52,25 @@ public class SaleController {
 		return saleService.create(request, true);
 	}
 
+	// Penjualan tempo (sisa tagihan menjadi piutang customer); izinnya dipisah lewat role_api. Tanpa diskon manual.
+	@PostMapping("/credit")
+	public ResponseModel<SaleDTO> createOnCredit(@RequestBody SaleRequestDTO request) {
+		request.setCredit(true);
+		return saleService.create(request, false, true);
+	}
+
+	// Aturan pajak/biaya untuk kasir offline.
+	@GetMapping("/charges")
+	public ResponseModel<List<com.saasno.service.SaleChargeService.Charge>> charges() {
+		return saleService.charges();
+	}
+
+	// Transaksi yang dicatat saat kasir offline, dikirim setelah koneksi pulih.
+	@PostMapping("/offline")
+	public ResponseModel<SaleDTO> createOffline(@RequestBody com.saasno.utility.dto.sale.SaleOfflineDTO request) {
+		return saleService.createOffline(request);
+	}
+
 	@GetMapping
 	public ResponseEntity<DataResult<SaleDTO>> read(HttpServletRequest request) {
 		return saleService.read(request);

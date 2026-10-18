@@ -43,6 +43,10 @@ public class ProductEntity {
 	@Column(name = "cost_price", precision = 19, scale = 2)
 	private BigDecimal costPrice;
 
+	// true = stok produk ini dilacak per batch dengan tanggal kedaluwarsa (FEFO).
+	@Column(name = "track_expiry", nullable = false)
+	private boolean trackExpiry = false;
+
 	// Keterangan produk (tampil di katalog publik); kosong = belum diisi.
 	@Column(length = 1000)
 	private String description;
@@ -145,6 +149,14 @@ public class ProductEntity {
 
 	public void setBranchId(String branchId) {
 		this.branchId = branchId;
+	}
+
+	public boolean isTrackExpiry() {
+		return trackExpiry;
+	}
+
+	public void setTrackExpiry(boolean trackExpiry) {
+		this.trackExpiry = trackExpiry;
 	}
 
 	public String getDescription() {

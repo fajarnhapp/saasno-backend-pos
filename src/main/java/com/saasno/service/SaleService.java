@@ -95,6 +95,105 @@ public class SaleService {
 	@Autowired
 	private SessionUtility sessionUtility;
 
+	@Autowired
+	private ShiftService shiftService;
+
+	@Autowired
+	private LoyaltyService loyaltyService;
+
+	@Autowired
+	private ReceivableService receivableService;
+
+	// ---------------------------------------------------------------- offline
+
+	private static final long OFFLINE_MAX_AGE_DAYS = 7;
+
+	// Aturan pajak/biaya untuk kasir offline: kasir menghitung total sendiri dengan aturan ini lalu server memeriksanya.
+	@Transactional(readOnly = true)
+	public ResponseModel<List<SaleChargeService.Charge>> charges() {
+		branchScopeService.current();
+		return new ResponseModel<List<SaleChargeService.Charge>>().success(saleChargeService.active());
+	}
+
+	// Menyimpan transaksi yang dicatat saat offline. Total yang dibayar pelanggan harus sama dengan hitungan server dari harga yang
+	// dipakai kasir; stok harus cukup (bila tidak, transaksi ditolak dan tetap menunggu di antrean kasir). Waktu transaksi tetap
+	// waktu di kasir. Idempotensi lewat offlineId.
+	@Transactional
+	public ResponseModel<SaleDTO> createOffline(com.saasno.utility.dto.sale.SaleOfflineDTO request) {
+		BranchScope scope = branchScopeService.current();
+		String userId = sessionUtility.getUserId();
+		String key = clean(request.offlineId());
+		if (key == null || key.length() > 64) {
+			throw new ApiException("400", "offlineId wajib diisi (maksimal 64 karakter)");
+		}
+		SaleEntity existing = saleRepository.findByRequestKey(userId, key);
+		if (existing != null) {
+			return new ResponseModel<SaleDTO>().success(dtos(List.of(existing)).get(0));
+		}
+		LocalDateTime at = request.createdAt();
+		if (at == null || at.isAfter(LocalDateTime.now().plusMinutes(5)) || at.isBefore(LocalDateTime.now().minusDays(OFFLINE_MAX_AGE_DAYS))) {
+			throw new ApiException("400", "Waktu transaksi tidak valid (maksimal " + OFFLINE_MAX_AGE_DAYS + " hari ke belakang)");
+		}
+		BranchEntity branch = branch(scope, request.branchId());
+		shiftService.assertOpenAt(userId, branch.getId(), at);
+		SaleCalculator.Cart cart = calculator.priceOffline(branch.getId(), request.customerId(), request.items());
+		if (request.total() == null || request.total().compareTo(cart.total) != 0) {
+			throw new ApiException("409", "Total hitungan server Rp " + cart.total.stripTrailingZeros().toPlainString()
+					+ " berbeda dari yang dibayar di kasir; periksa harga atau pajak yang berubah");
+		}
+		BigDecimal paid = request.paid();
+		if (paid == null || paid.compareTo(cart.total) < 0 || paid.stripTrailingZeros().scale() > 0 || paid.compareTo(MAX_AMOUNT) > 0) {
+			throw new ApiException("400", "Jumlah bayar tidak valid");
+		}
+		paid = paid.setScale(2, RoundingMode.UNNECESSARY);
+
+		SaleEntity sale = new SaleEntity();
+		sale.setBranchId(branch.getId());
+		sale.setCustomerId(cart.customer == null ? null : cart.customer.getId());
+		sale.setStatus(SaleEntity.COMPLETED);
+		sale.setSource("OFFLINE");
+		sale.setSubtotal(cart.subtotal);
+		sale.setPromoDiscount(BigDecimal.ZERO);
+		sale.setManualDiscount(BigDecimal.ZERO);
+		sale.setCharges(saleChargeService.write(cart.charges));
+		sale.setChargeTotal(cart.chargeTotal);
+		sale.setTotal(cart.total);
+		sale.setPaid(paid);
+		sale.setChangeAmount(paid.subtract(cart.total));
+		sale.setRequestKey(key);
+		sale.setCreatedBy(userId);
+		saleRepository.store(sale, branch.getSerial());
+		saleRepository.getEntityManager().flush();
+		for (SaleCalculator.Line line : cart.lines) {
+			SaleItemEntity item = new SaleItemEntity();
+			item.setSaleId(sale.getId());
+			item.setProductId(line.product.getId());
+			item.setProductSerial(line.product.getSerial());
+			item.setProductName(line.product.getName());
+			item.setUnit(line.product.getUnit());
+			item.setQuantity(line.quantity);
+			item.setUnitPrice(line.unitPrice);
+			item.setPriceSource(line.priceSource);
+			item.setDiscount(BigDecimal.ZERO);
+			item.setLineTotal(line.lineTotal);
+			item.setNetTotal(line.netTotal);
+			item.setFree(false);
+			item.setUnitCost(line.product.getCostPrice());
+			saleRepository.addItem(item);
+		}
+		saleRepository.getEntityManager().flush();
+		// Mutasi stok dicatat dengan waktu di kasir (tabelnya append-only), supaya harga pokok jatuh di hari yang benar.
+		List<SaleItemEntity> saved = saleRepository.findItems(List.of(sale.getId()));
+		stockService.atTime(at, () -> deductStock(sale, saved, userId));
+		loyaltyService.onCompleted(sale);
+		saleRepository.getEntityManager().flush();
+		// Waktu transaksi tetap waktu di kasir, supaya laporan harian dan shift jatuh di hari yang benar.
+		saleRepository.getEntityManager().createNativeQuery("UPDATE public.sale SET registered = :t, modificated = :t WHERE id = :id")
+				.setParameter("t", at).setParameter("id", sale.getId()).executeUpdate();
+		saleRepository.getEntityManager().refresh(sale);
+		return new ResponseModel<SaleDTO>().success(dtos(List.of(sale)).get(0));
+	}
+
 	// ---------------------------------------------------------------- hitung & simpan
 
 	// Pratinjau perhitungan keranjang tanpa menyimpan (dipakai layar kasir). paid boleh kosong.
@@ -114,6 +213,12 @@ public class SaleService {
 	// allowDiscount: true hanya untuk endpoint khusus diskon manual (izinnya dipisah lewat role_api).
 	@Transactional
 	public ResponseModel<SaleDTO> create(SaleRequestDTO request, boolean allowDiscount) {
+		return create(request, allowDiscount, false);
+	}
+
+	// allowCredit: true hanya untuk endpoint penjualan tempo (izinnya dipisah lewat role_api).
+	@Transactional
+	public ResponseModel<SaleDTO> create(SaleRequestDTO request, boolean allowDiscount, boolean allowCredit) {
 		BranchScope scope = branchScopeService.current();
 		String userId = sessionUtility.getUserId();
 		String key = clean(request.getRequestKey());
@@ -130,7 +235,14 @@ public class SaleService {
 		if (!allowDiscount && hasDiscount(request)) {
 			throw new ApiException("400", "Diskon manual tidak diizinkan di endpoint ini");
 		}
+		if (request.isCredit() && !allowCredit) {
+			throw new ApiException("400", "Penjualan tempo tidak diizinkan di endpoint ini");
+		}
+		if (request.isCredit() && hasDiscount(request)) {
+			throw new ApiException("400", "Penjualan tempo tidak dapat digabung dengan diskon manual");
+		}
 		BranchEntity branch = branch(scope, request.getBranchId());
+		shiftService.assertOpen(userId, branch.getId());
 		// Keranjang tertahan yang dilanjutkan dikunci dulu: dua kasir yang membukanya tidak keduanya bisa membayar.
 		String holdId = clean(request.getHoldId());
 		SaleHoldEntity hold = holdId == null ? null : holdService.lockUsable(holdId, branch.getId());
@@ -142,7 +254,21 @@ public class SaleService {
 			throw new ApiException("400", "Jumlah bayar tidak valid");
 		}
 		paid = paid.setScale(2, RoundingMode.UNNECESSARY);
-		if (paid.compareTo(cart.total) < 0) {
+		boolean credit = request.isCredit();
+		BigDecimal creditAmount = BigDecimal.ZERO.setScale(2);
+		java.time.LocalDate dueDate = null;
+		if (credit) {
+			// Penjualan tempo: paid = uang muka; sisanya piutang customer terdaftar, dalam batas piutang.
+			if (cart.customer == null) {
+				throw new ApiException("400", "Pilih customer terdaftar untuk penjualan tempo");
+			}
+			if (paid.compareTo(cart.total) >= 0) {
+				throw new ApiException("400", "Uang muka sudah menutup total; bukan penjualan tempo");
+			}
+			creditAmount = cart.total.subtract(paid);
+			receivableService.assertWithinLimit(cart.customer.getId(), creditAmount);
+			dueDate = receivableService.dueDate(request.getDueDate());
+		} else if (paid.compareTo(cart.total) < 0) {
 			throw new ApiException("400", "Jumlah bayar kurang dari total");
 		}
 
@@ -164,13 +290,18 @@ public class SaleService {
 			sale.setPromoDiscountValue(cart.promo.getDiscountValue());
 			sale.setPromoValue(cart.promoValue);
 		}
-		sale.setManualDiscount(cart.manualDiscount);
+		sale.setManualDiscount(cart.manualOnly);
 		sale.setManualDiscountReason(cart.discountReason);
+		sale.setRewardDiscount(cart.rewardDiscount);
+		sale.setVoucherId(cart.voucherId);
+		sale.setVoucherCode(cart.voucherCode);
+		sale.setPointsUsed(cart.pointsUsed);
 		sale.setCharges(saleChargeService.write(cart.charges));
 		sale.setChargeTotal(cart.chargeTotal);
 		sale.setTotal(cart.total);
 		sale.setPaid(paid);
-		sale.setChangeAmount(paid.subtract(cart.total));
+		sale.setCreditAmount(creditAmount);
+		sale.setChangeAmount(credit ? BigDecimal.ZERO.setScale(2) : paid.subtract(cart.total));
 		sale.setRequestKey(key);
 		sale.setCreatedBy(userId);
 		saleRepository.store(sale, branch.getSerial());
@@ -200,9 +331,14 @@ public class SaleService {
 		if (hold != null) {
 			holdService.markUsed(hold, sale.getId(), userId);
 		}
+		loyaltyService.onCreated(sale);
+		if (credit) {
+			receivableService.open(sale, dueDate);
+		}
 
 		if (SaleEntity.COMPLETED.equals(sale.getStatus())) {
 			deductStock(sale, saleRepository.findItems(List.of(sale.getId())), userId);
+			loyaltyService.onCompleted(sale);
 		} else if (SaleEntity.WAITING_APPROVAL.equals(sale.getStatus())) {
 			notifyWaiting(sale, userId);
 		}
@@ -259,6 +395,7 @@ public class SaleService {
 		}
 		deductStock(sale, items, userId);
 		sale.setStatus(SaleEntity.COMPLETED);
+		loyaltyService.onCompleted(sale);
 		decide(sale, userId, decisionNote);
 		notifyDecided(sale, true, decisionNote);
 		return new ResponseModel<SaleDTO>().success(dtos(List.of(sale)).get(0));
@@ -275,6 +412,8 @@ public class SaleService {
 			throw new ApiException("400", "Alasan tidak boleh lebih dari " + MAX_NOTE + " karakter");
 		}
 		sale.setStatus(SaleEntity.REJECTED);
+		loyaltyService.onReversed(sale, "Ditolak");
+		receivableService.voidFor(sale);
 		decide(sale, sessionUtility.getUserId(), reason);
 		notifyDecided(sale, false, reason);
 		return new ResponseModel<SaleDTO>().success(dtos(List.of(sale)).get(0));
@@ -294,6 +433,8 @@ public class SaleService {
 		}
 		assertWaiting(sale);
 		sale.setStatus(SaleEntity.CANCELLED);
+		loyaltyService.onReversed(sale, "Dibatalkan");
+		receivableService.voidFor(sale);
 		decide(sale, userId, null);
 		return new ResponseModel<SaleDTO>().success(dtos(List.of(sale)).get(0));
 	}
@@ -321,6 +462,7 @@ public class SaleService {
 		if (items.stream().anyMatch(i -> i.getReturnedQuantity().signum() > 0)) {
 			throw new ApiException("409", "Transaksi sudah memiliki retur sehingga tidak dapat di-void");
 		}
+		receivableService.assertVoidable(sale);
 		String userId = sessionUtility.getUserId();
 		Map<String, ProductEntity> products = products(items);
 		for (SaleItemEntity item : items.stream().sorted(Comparator.comparing(SaleItemEntity::getProductId)).toList()) {
@@ -328,6 +470,8 @@ public class SaleService {
 					StockMovementEntity.RETURN, VOID_REFERENCE, sale.getId(), "Void " + sale.getSerial(), userId, item.getUnitCost());
 		}
 		sale.setStatus(SaleEntity.VOIDED);
+		loyaltyService.onReversed(sale, "Void");
+		receivableService.voidFor(sale);
 		sale.setVoidedBy(userId);
 		sale.setVoidedAt(LocalDateTime.now());
 		sale.setVoidReason(voidReason);
@@ -466,8 +610,11 @@ public class SaleService {
 		dto.setPromoId(cart.promo == null ? null : cart.promo.getId());
 		dto.setPromoName(cart.promo == null ? null : cart.promo.getName());
 		dto.setPromoDiscount(cart.promoDiscount);
-		dto.setManualDiscount(cart.manualDiscount);
+		dto.setManualDiscount(cart.manualOnly);
 		dto.setManualDiscountReason(cart.discountReason);
+		dto.setRewardDiscount(cart.rewardDiscount);
+		dto.setVoucherCode(cart.voucherCode);
+		dto.setPointsUsed(cart.pointsUsed);
 		dto.setCharges(cart.charges);
 		dto.setChargeTotal(cart.chargeTotal);
 		dto.setTotal(cart.total);
@@ -535,6 +682,12 @@ public class SaleService {
 			dto.setPromoDiscount(s.getPromoDiscount());
 			dto.setManualDiscount(s.getManualDiscount());
 			dto.setManualDiscountReason(s.getManualDiscountReason());
+			dto.setRewardDiscount(s.getRewardDiscount());
+			dto.setCreditAmount(s.getCreditAmount());
+			dto.setSource(s.getSource());
+			dto.setVoucherCode(s.getVoucherCode());
+			dto.setPointsUsed(s.getPointsUsed());
+			dto.setPointsEarned(s.getPointsEarned());
 			dto.setCharges(saleChargeService.read(s.getCharges()));
 			dto.setChargeTotal(s.getChargeTotal());
 			dto.setTotal(s.getTotal());

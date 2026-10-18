@@ -51,6 +51,15 @@ import jakarta.servlet.http.HttpServletRequest;
 @Service
 public class ProductService {
 
+	@Autowired
+	private BatchService batchService;
+
+	@Autowired
+	private PriceHistoryService priceHistoryService;
+
+	@Autowired
+	private com.saasno.utility.SessionUtility sessionUtility;
+
 	// Bentuk kode satuan; daftar satuan yang boleh dipakai ada di configuration PRODUCT_UNIT.
 	private static final Pattern UNIT = Pattern.compile("^[A-Z0-9_]{1,32}$");
 	private static final BigDecimal MAX_PRICE = new BigDecimal("9999999999999999.99");
@@ -99,6 +108,12 @@ public class ProductService {
 
 	@Transactional
 	public ResponseModel<ProductDTO> create(ProductDTO request) {
+		return create(request, PriceHistoryService.MANUAL);
+	}
+
+	// source: asal perubahan untuk riwayat harga (MANUAL dari form, IMPORT dari impor berkas).
+	@Transactional
+	public ResponseModel<ProductDTO> create(ProductDTO request, String source) {
 		String name = clean(request.getName());
 		if (name == null) {
 			throw new ApiException("400", "Nama tidak boleh kosong");
@@ -123,9 +138,11 @@ public class ProductService {
 		ProductEntity entity = new ProductEntity(name, price(request.getPrice()), unit);
 		entity.setCostPrice(costPrice(request.getCostPrice()));
 		entity.setDescription(description(request.getDescription()));
+		entity.setTrackExpiry(Boolean.TRUE.equals(request.getTrackExpiry()));
 		entity.setBranchId(branchId);
 		entity.setStatus(status.name());
 		productRepository.store(entity);
+		priceHistoryService.record(entity, null, null, source, sessionUtility.getUserId());
 		if (tiers != null) {
 			tiers.forEach(t -> tierRepository.store(new ProductPriceTierEntity(entity.getId(), t.minQuantity(), t.price())));
 		}
@@ -178,6 +195,11 @@ public class ProductService {
 
 	@Transactional
 	public ResponseModel<ProductDTO> update(ProductDTO request) {
+		return update(request, PriceHistoryService.MANUAL);
+	}
+
+	@Transactional
+	public ResponseModel<ProductDTO> update(ProductDTO request, String source) {
 		BranchScope scope = branchScopeService.current();
 		ProductEntity entity = loadOwned(request.getId(), scope);
 		branchScopeService.assertSameOwner(entity.getBranchId(), request.getBranchId());
@@ -213,6 +235,8 @@ public class ProductService {
 			throw new ApiException("400", "Harga harus lebih tinggi dari harga bertingkat");
 		}
 
+		BigDecimal priceBefore = entity.getPrice();
+		BigDecimal costBefore = entity.getCostPrice();
 		if (name != null) {
 			entity.setName(name);
 		}
@@ -233,7 +257,15 @@ public class ProductService {
 		if (status != null) {
 			entity.setStatus(status.name());
 		}
+		if (request.getTrackExpiry() != null && request.getTrackExpiry() != entity.isTrackExpiry()) {
+			entity.setTrackExpiry(request.getTrackExpiry());
+			if (!request.getTrackExpiry()) {
+				// Berhenti melacak: catatan batch tidak lagi dipakai, stok tetap utuh.
+				batchService.clear(entity.getId());
+			}
+		}
 		productRepository.update(entity);
+		priceHistoryService.record(entity, priceBefore, costBefore, source, sessionUtility.getUserId());
 
 		if (conversions != null) {
 			syncConversions(entity.getId(), existing, conversions);
@@ -342,6 +374,7 @@ public class ProductService {
 		dto.setPrice(entity.getPrice());
 		dto.setCostPrice(entity.getCostPrice());
 		dto.setDescription(entity.getDescription());
+		dto.setTrackExpiry(entity.isTrackExpiry());
 		dto.setUnit(entity.getUnit());
 		dto.setStatus(entity.getStatus());
 		dto.setModificated(entity.getModificated());

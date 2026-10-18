@@ -20,6 +20,12 @@ public class SaleRequestDTO {
 	private BigDecimal paid;
 	private String requestKey;
 	private String holdId;
+	// Kode voucher dan jumlah poin yang dipakai sebagai potongan (opsional).
+	private String voucherCode;
+	private Long redeemPoints;
+	// Penjualan tempo: paid = uang muka (boleh 0), sisanya menjadi piutang yang jatuh tempo pada dueDate (kosong = bawaan).
+	private boolean credit;
+	private java.time.LocalDate dueDate;
 
 	public String getBranchId() {
 		return branchId;
@@ -85,4 +91,35 @@ public class SaleRequestDTO {
 		this.holdId = holdId;
 	}
 
+	public String getVoucherCode() {
+		return voucherCode;
+	}
+
+	public void setVoucherCode(String voucherCode) {
+		this.voucherCode = voucherCode;
+	}
+
+	public Long getRedeemPoints() {
+		return redeemPoints;
+	}
+
+	public void setRedeemPoints(Long redeemPoints) {
+		this.redeemPoints = redeemPoints;
+	}
+
+	public boolean isCredit() {
+		return credit;
+	}
+
+	public void setCredit(boolean credit) {
+		this.credit = credit;
+	}
+
+	public java.time.LocalDate getDueDate() {
+		return dueDate;
+	}
+
+	public void setDueDate(java.time.LocalDate dueDate) {
+		this.dueDate = dueDate;
+	}
 }

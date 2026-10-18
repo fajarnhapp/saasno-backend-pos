@@ -76,7 +76,10 @@ public class StockMovementEntity {
 
 	@PrePersist
 	public void beforeInsert() {
-		this.registered = LocalDateTime.now();
+		// Boleh sudah diisi pemanggil (transaksi offline memakai waktu di kasir); mutasi tidak bisa diubah setelah tersimpan.
+		if (this.registered == null) {
+			this.registered = LocalDateTime.now();
+		}
 	}
 
 	public String getId() {

@@ -23,6 +23,15 @@ public class SaleDTO {
 	private String promoName;
 	private BigDecimal promoDiscount;
 	private BigDecimal manualDiscount;
+	// Potongan dari voucher dan poin (tidak butuh persetujuan); terpisah dari diskon manual.
+	private BigDecimal rewardDiscount;
+	// Bagian tagihan yang masih berupa piutang saat transaksi (penjualan tempo).
+	private BigDecimal creditAmount;
+	// ONLINE | OFFLINE.
+	private String source;
+	private String voucherCode;
+	private Long pointsUsed;
+	private Long pointsEarned;
 	private String manualDiscountReason;
 	private java.util.List<SaleChargeDTO> charges;
 	private BigDecimal chargeTotal;
@@ -299,4 +308,51 @@ public class SaleDTO {
 		this.voidReason = voidReason;
 	}
 
+	public BigDecimal getRewardDiscount() {
+		return rewardDiscount;
+	}
+
+	public void setRewardDiscount(BigDecimal rewardDiscount) {
+		this.rewardDiscount = rewardDiscount;
+	}
+
+	public String getVoucherCode() {
+		return voucherCode;
+	}
+
+	public void setVoucherCode(String voucherCode) {
+		this.voucherCode = voucherCode;
+	}
+
+	public Long getPointsUsed() {
+		return pointsUsed;
+	}
+
+	public void setPointsUsed(Long pointsUsed) {
+		this.pointsUsed = pointsUsed;
+	}
+
+	public Long getPointsEarned() {
+		return pointsEarned;
+	}
+
+	public void setPointsEarned(Long pointsEarned) {
+		this.pointsEarned = pointsEarned;
+	}
+
+	public BigDecimal getCreditAmount() {
+		return creditAmount;
+	}
+
+	public void setCreditAmount(BigDecimal creditAmount) {
+		this.creditAmount = creditAmount;
+	}
+
+	public String getSource() {
+		return source;
+	}
+
+	public void setSource(String source) {
+		this.source = source;
+	}
 }

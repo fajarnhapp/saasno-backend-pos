@@ -67,8 +67,15 @@ public class SaleCalculator {
 		public BigDecimal promoDiscount = BigDecimal.ZERO;
 		// Nilai manfaat promo saat transaksi (potongan, atau harga barang gratis); dibekukan untuk hitung ulang retur.
 		public BigDecimal promoValue = BigDecimal.ZERO;
+		// Seluruh potongan di luar promo: diskon manual + reward (voucher dan poin). Dipakai menghitung nilai akhir dan alokasi per baris.
 		public BigDecimal manualDiscount = BigDecimal.ZERO;
+		// Hanya diskon manual (yang butuh alasan dan persetujuan bila melebihi batas).
+		public BigDecimal manualOnly = BigDecimal.ZERO;
 		public String discountReason;
+		public BigDecimal rewardDiscount = BigDecimal.ZERO;
+		public String voucherId;
+		public String voucherCode;
+		public long pointsUsed;
 		// Biaya lain-lain (pajak dll.), dihitung satu per satu dari nilai akhir; exclusiveCharge = yang ditambahkan ke tagihan.
 		public List<SaleChargeDTO> charges = new ArrayList<>();
 		public BigDecimal chargeTotal = BigDecimal.ZERO;
@@ -96,6 +103,9 @@ public class SaleCalculator {
 
 	@Autowired
 	private StockRepository stockRepository;
+
+	@Autowired
+	private LoyaltyService loyaltyService;
 
 	@Autowired
 	private BranchRepository branchRepository;
@@ -177,6 +187,20 @@ public class SaleCalculator {
 			}
 			cart.discountReason = reason;
 		}
+		cart.manualOnly = cart.manualDiscount;
+
+		// Reward: voucher lalu poin, dikurangkan dari tagihan setelah promo dan diskon manual; tidak butuh persetujuan.
+		BigDecimal base = afterPromo.subtract(cart.manualOnly);
+		LoyaltyService.VoucherUse voucher = loyaltyService.resolveVoucher(request.getVoucherCode(), branchId, cart.customer, afterPromo, base);
+		BigDecimal voucherDiscount = voucher == null ? BigDecimal.ZERO : voucher.discount();
+		BigDecimal pointsDiscount = loyaltyService.resolvePoints(request.getRedeemPoints(), cart.customer, base.subtract(voucherDiscount));
+		cart.rewardDiscount = voucherDiscount.add(pointsDiscount);
+		if (voucher != null) {
+			cart.voucherId = voucher.id();
+			cart.voucherCode = voucher.code();
+		}
+		cart.pointsUsed = pointsDiscount.signum() > 0 ? request.getRedeemPoints() : 0;
+		cart.manualDiscount = cart.manualOnly.add(cart.rewardDiscount);
 
 		// Nilai yang dibayar dibulatkan ke rupiah utuh sebelum pajak.
 		BigDecimal net = afterPromo.subtract(cart.manualDiscount).setScale(0, RoundingMode.HALF_UP);
@@ -188,9 +212,63 @@ public class SaleCalculator {
 		allocate(cart, net);
 
 		cart.limitPercent = decimal(ConfigurationKey.MANUAL_DISCOUNT_MAX_PERCENT, new BigDecimal("10"));
-		cart.requiresApproval = cart.manualDiscount.signum() > 0
-				&& cart.manualDiscount.multiply(HUNDRED).compareTo(cart.limitPercent.multiply(afterPromo)) > 0;
+		cart.requiresApproval = cart.manualOnly.signum() > 0
+				&& cart.manualOnly.multiply(HUNDRED).compareTo(cart.limitPercent.multiply(afterPromo)) > 0;
 
+		assertStock(cart);
+		return cart;
+	}
+
+	// Transaksi offline: harga per satuan dasar ditentukan kasir saat itu (tanpa promo, diskon, voucher, atau poin). Pajak dan
+	// alokasi per baris dihitung dengan aturan yang sama; stok diperiksa seperti biasa.
+	@Transactional(readOnly = true)
+	public Cart priceOffline(String branchId, String customerId, List<com.saasno.utility.dto.sale.SaleOfflineDTO.Item> items) {
+		if (items == null || items.isEmpty()) {
+			throw new ApiException("400", "Barang tidak boleh kosong");
+		}
+		if (items.size() > MAX_ITEMS) {
+			throw new ApiException("400", "Barang tidak boleh lebih dari " + MAX_ITEMS);
+		}
+		Cart cart = new Cart();
+		cart.branchId = branchId;
+		cart.customer = customer(branchId, customerId);
+		Set<String> seen = new HashSet<>();
+		for (com.saasno.utility.dto.sale.SaleOfflineDTO.Item item : items) {
+			String productId = item == null || item.productId() == null ? null : item.productId().trim();
+			if (productId == null || productId.isEmpty() || !seen.add(productId)) {
+				throw new ApiException("400", "Produk tidak boleh kosong atau ganda");
+			}
+			ProductEntity product = stockService.visibleProduct(branchId, productId);
+			if ("DISABLED".equals(product.getStatus())) {
+				throw new ApiException("409", "Produk nonaktif: " + product.getSerial() + " " + product.getName());
+			}
+			BigDecimal quantity = stockService.toBase(product, item.quantity(), null, false);
+			BigDecimal unitPrice = item.unitPrice();
+			if (unitPrice == null || unitPrice.signum() < 0 || unitPrice.stripTrailingZeros().scale() > 2 || unitPrice.compareTo(MAX_AMOUNT) > 0) {
+				throw new ApiException("400", "Harga tidak valid: " + product.getName());
+			}
+			String source = item.priceSource() == null ? "BASE" : item.priceSource();
+			if (!source.equals("BASE") && !source.equals("CUSTOMER") && !source.equals("CUSTOMER_TYPE")) {
+				source = "BASE";
+			}
+			Line line = new Line();
+			line.product = product;
+			line.quantity = quantity;
+			line.unitPrice = unitPrice.setScale(2, RoundingMode.HALF_UP);
+			line.priceSource = source;
+			line.gross = line.unitPrice.multiply(quantity).setScale(2, RoundingMode.HALF_UP);
+			line.lineTotal = line.gross;
+			cart.lines.add(line);
+		}
+		cart.subtotal = cart.lines.stream().map(l -> l.gross).reduce(BigDecimal.ZERO, BigDecimal::add);
+		BigDecimal net = cart.subtotal.setScale(0, RoundingMode.HALF_UP);
+		SaleChargeService.Result charged = saleChargeService.compute(net);
+		cart.charges = charged.charges();
+		cart.chargeTotal = charged.total();
+		cart.exclusiveCharge = charged.exclusive();
+		cart.total = net.add(charged.exclusive()).setScale(2);
+		allocate(cart, net);
+		cart.limitPercent = decimal(ConfigurationKey.MANUAL_DISCOUNT_MAX_PERCENT, new BigDecimal("10"));
 		assertStock(cart);
 		return cart;
 	}

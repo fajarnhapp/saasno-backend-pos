@@ -35,6 +35,9 @@ public class ProductDTO {
 	// Keterangan produk (maks 1000 karakter, tampil di katalog publik). Saat update: null = tidak berubah, teks kosong = dihapus.
 	private String description;
 
+	// Lacak batch dan tanggal kedaluwarsa. Saat update: null = tidak berubah.
+	private Boolean trackExpiry;
+
 	// Diisi sistem (read-only): waktu foto katalog terakhir diganti (epoch milidetik); kosong = belum ada foto.
 	private Long imageVersion;
 
@@ -171,6 +174,14 @@ public class ProductDTO {
 
 	public void setImageVersion(Long imageVersion) {
 		this.imageVersion = imageVersion;
+	}
+
+	public Boolean getTrackExpiry() {
+		return trackExpiry;
+	}
+
+	public void setTrackExpiry(Boolean trackExpiry) {
+		this.trackExpiry = trackExpiry;
 	}
 
 	public String getDescription() {

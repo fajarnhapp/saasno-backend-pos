@@ -5,7 +5,8 @@ import java.time.LocalDate;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
-// Kas harian satu cabang. net = salesTotal - voidTotal - returnTotal (uang bersih yang masuk hari itu).
+// Kas harian satu cabang. net = salesTotal - creditTotal + collectionTotal - voidTotal - returnTotal (uang bersih yang masuk hari itu;
+// voidTotal dan returnTotal hanya bagian yang dibayar tunai, tidak termasuk yang mengurangi piutang).
 // Penjualan dihitung pada hari selesai (hari disetujui bila perlu persetujuan), void pada hari void, dan retur
 // pada hari retur. promoDiscount, manualDiscount, dan tax hanya keterangan dari transaksi selesai hari itu.
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -24,6 +25,9 @@ public class SaleCashDTO {
 	private BigDecimal promoDiscount;
 	private BigDecimal manualDiscount;
 	private BigDecimal chargeTotal;
+	// Bagian penjualan yang menjadi piutang (belum diterima) dan pembayaran piutang yang diterima hari itu.
+	private BigDecimal creditTotal;
+	private BigDecimal collectionTotal;
 
 	public String getBranchId() {
 		return branchId;
@@ -129,4 +133,19 @@ public class SaleCashDTO {
 		this.chargeTotal = chargeTotal;
 	}
 
+	public BigDecimal getCreditTotal() {
+		return creditTotal;
+	}
+
+	public void setCreditTotal(BigDecimal creditTotal) {
+		this.creditTotal = creditTotal;
+	}
+
+	public BigDecimal getCollectionTotal() {
+		return collectionTotal;
+	}
+
+	public void setCollectionTotal(BigDecimal collectionTotal) {
+		this.collectionTotal = collectionTotal;
+	}
 }
